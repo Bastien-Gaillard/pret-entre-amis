@@ -1,27 +1,26 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Controller;
 
+use App\Entity\Loan;
+use App\Enum\LoanStatus;
 use App\Repository\LoanRepository;
-use App\View;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-final class DashboardController
+final class DashboardController extends AbstractController
 {
-    public function __construct(
-        private readonly View $view,
-        private readonly LoanRepository $loans,
-    ) {
-    }
-
-    public function index(): void
+    #[Route('/', name: 'app_dashboard', methods: ['GET'])]
+    public function index(LoanRepository $loans): Response
     {
-        $this->view->render('dashboard', [
-            'title'        => 'Tableau de bord',
-            'activeLoans'  => $this->loans->active(),
-            'stats'        => $this->loans->stats(),
-            'topBorrowers' => $this->loans->topBorrowers(),
+        $active = $loans->findActive();
+
+        return $this->render('dashboard/index.html.twig', [
+            'overdue' => array_values(array_filter($active, fn (Loan $l) => $l->getStatus() === LoanStatus::EnRetard)),
+            'ongoing' => array_values(array_filter($active, fn (Loan $l) => $l->getStatus() !== LoanStatus::EnRetard)),
+            'stats' => $loans->getStats(),
+            'topBorrowers' => $loans->findTopBorrowers(),
         ]);
     }
 }

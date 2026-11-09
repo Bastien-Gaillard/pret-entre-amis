@@ -1,129 +1,81 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Controller;
 
-use App\Csrf;
-use App\Flash;
-use App\HttpException;
-use App\Input;
+use App\Entity\Item;
+use App\Enum\ItemCategory;
+use App\Form\ItemType;
 use App\Repository\ItemRepository;
-use App\View;
-use PDOException;
+use App\Repository\LoanRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-final class ItemController
+#[Route('/objets')]
+final class ItemController extends AbstractController
 {
-    public const DEFAULT_CATEGORIES = ['Bricolage', 'Camping', 'Cuisine', 'Jeu', 'Livre', 'Sport', 'Autre'];
-
-    public function __construct(
-        private readonly View $view,
-        private readonly ItemRepository $items,
-    ) {
+    public function __construct(private readonly EntityManagerInterface $em)
+    {
     }
 
-    public function index(): void
+    #[Route('', name: 'app_item_index', methods: ['GET'])]
+    public function index(Request $request, ItemRepository $items, LoanRepository $loans): Response
     {
-        $category = Input::nullable('category');
-        $this->view->render('items/index', [
-            'title'      => 'Objets',
-            'items'      => $this->items->allWithCurrentLoan($category),
-            'categories' => $this->items->categories(),
-            'current'    => $category,
+        $category = ItemCategory::tryFrom($request->query->getString('categorie'));
+
+        return $this->render('item/index.html.twig', [
+            'items' => $items->findByCategory($category),
+            'activeLoans' => $loans->findActiveIndexedByItem(),
+            'counts' => $items->countByCategory(),
+            'current' => $category,
         ]);
     }
 
-    public function create(): void
+    #[Route('/nouveau', name: 'app_item_new', methods: ['GET', 'POST'])]
+    public function new(Request $request): Response
     {
-        $this->renderForm(['name' => '', 'category' => 'Autre', 'notes' => '']);
+        return $this->handleForm($request, new Item(), 'Ajouter un objet');
     }
 
-    public function store(): void
+    #[Route('/{id}/modifier', name: 'app_item_edit', requirements: ['id' => '\d+'], methods: ['GET', 'POST'])]
+    public function edit(Request $request, Item $item): Response
     {
-        Csrf::verify();
-        [$data, $errors] = $this->validate();
-        if ($errors) {
-            $this->renderForm($data, $errors);
-            return;
-        }
-        $this->items->create($data);
-        Flash::add('success', sprintf('« %s » a été ajouté.', $data['name']));
-        redirect('/items');
+        return $this->handleForm($request, $item, 'Modifier « ' . $item->getName() . ' »');
     }
 
-    public function edit(int $id): void
+    #[Route('/{id}/supprimer', name: 'app_item_delete', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function delete(Request $request, Item $item): Response
     {
-        $this->renderForm($this->findOrFail($id), [], $id);
-    }
-
-    public function update(int $id): void
-    {
-        Csrf::verify();
-        $this->findOrFail($id);
-        [$data, $errors] = $this->validate();
-        if ($errors) {
-            $this->renderForm($data, $errors, $id);
-            return;
-        }
-        $this->items->update($id, $data);
-        Flash::add('success', 'Modifications enregistrées.');
-        redirect('/items');
-    }
-
-    public function delete(int $id): void
-    {
-        Csrf::verify();
-        $item = $this->findOrFail($id);
-        try {
-            $this->items->delete($id);
-            Flash::add('success', sprintf('« %s » a été supprimé.', $item['name']));
-        } catch (PDOException $e) {
-            if ($e->getCode() !== '23000') {
-                throw $e;
-            }
-            Flash::add('error', sprintf('Impossible de supprimer « %s » : il a un historique de prêts.', $item['name']));
-        }
-        redirect('/items');
-    }
-
-    /** @return array{0: array{name: string, category: string, notes: ?string}, 1: array<string, string>} */
-    private function validate(): array
-    {
-        $data = [
-            'name'     => Input::string('name'),
-            'category' => Input::string('category') ?: 'Autre',
-            'notes'    => Input::nullable('notes'),
-        ];
-        $errors = [];
-
-        if ($data['name'] === '') {
-            $errors['name'] = 'Le nom est obligatoire.';
-        } elseif (mb_strlen($data['name']) > 150) {
-            $errors['name'] = '150 caractères maximum.';
-        }
-        if (mb_strlen($data['category']) > 50) {
-            $errors['category'] = '50 caractères maximum.';
+        if (!$this->isCsrfTokenValid('delete-item-' . $item->getId(), $request->getPayload()->getString('_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
         }
 
-        return [$data, $errors];
+        if (!$item->getLoans()->isEmpty()) {
+            $this->addFlash('error', sprintf('Impossible de supprimer « %s » : il a un historique de prêts.', $item->getName()));
+        } else {
+            $this->em->remove($item);
+            $this->em->flush();
+            $this->addFlash('success', sprintf('« %s » a été supprimé.', $item->getName()));
+        }
+
+        return $this->redirectToRoute('app_item_index', status: Response::HTTP_SEE_OTHER);
     }
 
-    private function findOrFail(int $id): array
+    private function handleForm(Request $request, Item $item, string $title): Response
     {
-        return $this->items->find($id) ?? throw new HttpException(404);
-    }
+        $form = $this->createForm(ItemType::class, $item)->handleRequest($request);
 
-    private function renderForm(array $item, array $errors = [], ?int $id = null): void
-    {
-        $categories = array_values(array_unique([...self::DEFAULT_CATEGORIES, ...$this->items->categories()]));
-        sort($categories);
+        if ($form->isSubmitted() && $form->isValid()) {
+            $isNew = $item->getId() === null;
+            $this->em->persist($item);
+            $this->em->flush();
+            $this->addFlash('success', $isNew ? sprintf('« %s » a été ajouté.', $item->getName()) : 'Modifications enregistrées.');
 
-        $this->view->render('items/form', [
-            'title'      => $id ? 'Modifier un objet' : 'Ajouter un objet',
-            'item'       => $item,
-            'errors'     => $errors,
-            'categories' => $categories,
-            'action'     => $id ? "/items/$id" : '/items',
-        ], $errors ? 422 : 200);
+            return $this->redirectToRoute('app_item_index', status: Response::HTTP_SEE_OTHER);
+        }
+
+        return $this->render('item/form.html.twig', ['form' => $form, 'title' => $title]);
     }
 }

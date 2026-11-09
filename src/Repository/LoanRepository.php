@@ -1,148 +1,145 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Repository;
 
-use DomainException;
-use PDO;
-use PDOException;
+use App\Entity\Friend;
+use App\Entity\Item;
+use App\Entity\Loan;
+use App\Enum\LoanStatus;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\DBAL\LockMode;
+use Doctrine\ORM\QueryBuilder;
+use Doctrine\Persistence\ManagerRegistry;
 
-final class LoanRepository
+/** @extends ServiceEntityRepository<Loan> */
+class LoanRepository extends ServiceEntityRepository
 {
-    /** Le statut est calculé en SQL plutôt que stocké : il ne peut jamais être désynchronisé. */
-    private const STATUS_SQL = "CASE
-            WHEN l.returned_at IS NOT NULL THEN 'rendu'
-            WHEN l.due_at < CURDATE()      THEN 'en_retard'
-            ELSE 'en_cours'
-        END";
-
-    private const SELECT = 'SELECT l.*, i.name AS item_name, i.category, f.name AS friend_name, '
-        . self::STATUS_SQL . ' AS status
-        FROM loans l
-        JOIN items i   ON i.id = l.item_id
-        JOIN friends f ON f.id = l.friend_id';
-
-    public function __construct(private readonly PDO $pdo)
+    public function __construct(ManagerRegistry $registry)
     {
-    }
-
-    /** Prêts en cours, les retards d'abord puis par date de retour la plus proche. */
-    public function active(): array
-    {
-        return $this->pdo->query(
-            self::SELECT . ' WHERE l.returned_at IS NULL
-             ORDER BY (l.due_at < CURDATE()) DESC, l.due_at IS NULL, l.due_at, l.loaned_at'
-        )->fetchAll();
-    }
-
-    /** Historique filtrable par ami et/ou statut. */
-    public function history(?int $friendId = null, ?string $status = null): array
-    {
-        $where = [];
-        $params = [];
-        if ($friendId !== null) {
-            $where[] = 'l.friend_id = :friend';
-            $params['friend'] = $friendId;
-        }
-        if ($status !== null) {
-            $where[] = self::STATUS_SQL . ' = :status';
-            $params['status'] = $status;
-        }
-
-        $sql = self::SELECT . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-            . ' ORDER BY l.loaned_at DESC, l.id DESC';
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-
-        return $stmt->fetchAll();
-    }
-
-    public function find(int $id): ?array
-    {
-        $stmt = $this->pdo->prepare(self::SELECT . ' WHERE l.id = ?');
-        $stmt->execute([$id]);
-
-        return $stmt->fetch() ?: null;
+        parent::__construct($registry, Loan::class);
     }
 
     /**
-     * Crée un prêt dans une transaction. Le verrou FOR UPDATE évite que deux
-     * requêtes simultanées prêtent le même objet ; l'index unique sur
-     * active_item_id sert de filet de sécurité au niveau de la base.
+     * Prêts en cours : les retards d'abord, puis par date de retour la plus proche,
+     * les prêts sans date de retour à la fin.
      *
-     * @throws DomainException si l'objet est déjà prêté
+     * @return list<Loan>
      */
-    public function create(int $itemId, int $friendId, string $loanedAt, ?string $dueAt, ?string $notes): int
+    public function findActive(): array
     {
-        $this->pdo->beginTransaction();
-        try {
-            $stmt = $this->pdo->prepare('SELECT id FROM loans WHERE item_id = ? AND returned_at IS NULL FOR UPDATE');
-            $stmt->execute([$itemId]);
-            if ($stmt->fetch()) {
-                throw new DomainException('Cet objet est déjà prêté.');
-            }
+        return $this->withRelations()
+            ->addSelect('CASE WHEN l.dueAt < :today THEN 0 ELSE 1 END AS HIDDEN lateFirst')
+            ->addSelect('CASE WHEN l.dueAt IS NULL THEN 1 ELSE 0 END AS HIDDEN noDueLast')
+            ->where('l.returnedAt IS NULL')
+            ->setParameter('today', new \DateTimeImmutable('today'), 'date_immutable')
+            ->orderBy('lateFirst')
+            ->addOrderBy('noDueLast')
+            ->addOrderBy('l.dueAt')
+            ->addOrderBy('l.loanedAt')
+            ->getQuery()
+            ->getResult();
+    }
 
-            $this->pdo->prepare(
-                'INSERT INTO loans (item_id, friend_id, loaned_at, due_at, notes) VALUES (?, ?, ?, ?, ?)'
-            )->execute([$itemId, $friendId, $loanedAt, $dueAt, $notes]);
-            $id = (int) $this->pdo->lastInsertId();
-
-            $this->pdo->commit();
-
-            return $id;
-        } catch (PDOException $e) {
-            $this->pdo->rollBack();
-            if ($e->getCode() === '23000') {
-                throw new DomainException('Cet objet est déjà prêté.', 0, $e);
-            }
-            throw $e;
-        } catch (DomainException $e) {
-            $this->pdo->rollBack();
-            throw $e;
+    /** @return array<int, Loan> prêts en cours indexés par id d'objet */
+    public function findActiveIndexedByItem(): array
+    {
+        $indexed = [];
+        foreach ($this->findActive() as $loan) {
+            $indexed[$loan->getItem()->getId()] = $loan;
         }
+
+        return $indexed;
     }
 
-    /** @return bool false si le prêt n'existe pas ou était déjà rendu */
-    public function markReturned(int $id, string $returnedAt): bool
+    /** @return list<Loan> */
+    public function findHistory(?Friend $friend = null, ?LoanStatus $status = null): array
     {
-        $stmt = $this->pdo->prepare('UPDATE loans SET returned_at = ? WHERE id = ? AND returned_at IS NULL');
-        $stmt->execute([$returnedAt, $id]);
+        $qb = $this->withRelations()->orderBy('l.loanedAt', 'DESC')->addOrderBy('l.id', 'DESC');
 
-        return $stmt->rowCount() === 1;
+        if ($friend !== null) {
+            $qb->andWhere('l.friend = :friend')->setParameter('friend', $friend);
+        }
+
+        match ($status) {
+            LoanStatus::Rendu => $qb->andWhere('l.returnedAt IS NOT NULL'),
+            LoanStatus::EnRetard => $qb->andWhere('l.returnedAt IS NULL AND l.dueAt < :today'),
+            LoanStatus::EnCours => $qb->andWhere('l.returnedAt IS NULL AND (l.dueAt IS NULL OR l.dueAt >= :today)'),
+            null => null,
+        };
+        if ($status !== null && $status !== LoanStatus::Rendu) {
+            $qb->setParameter('today', new \DateTimeImmutable('today'), 'date_immutable');
+        }
+
+        return $qb->getQuery()->getResult();
     }
 
-    /** @return array{active: int, overdue: int, total: int, returned: int} */
-    public function stats(): array
+    /**
+     * Vérifie s'il existe un prêt en cours pour cet objet. Avec $lock, la ligne est
+     * verrouillée (SELECT … FOR UPDATE) jusqu'à la fin de la transaction.
+     */
+    public function hasActiveLoanFor(Item $item, bool $lock = false): bool
     {
-        $row = $this->pdo->query(
-            'SELECT COUNT(*)                                          AS total,
-                    COALESCE(SUM(returned_at IS NULL), 0)                    AS active,
-                    COALESCE(SUM(returned_at IS NULL AND due_at < CURDATE()), 0) AS overdue,
-                    COALESCE(SUM(returned_at IS NOT NULL), 0)                AS returned
-             FROM loans'
-        )->fetch();
+        $query = $this->createQueryBuilder('l')
+            ->select('l.id')
+            ->where('l.item = :item AND l.returnedAt IS NULL')
+            ->setParameter('item', $item)
+            ->getQuery();
+
+        if ($lock) {
+            $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
+        }
+
+        return $query->getOneOrNullResult() !== null;
+    }
+
+    /** @return array{active: int, overdue: int, returned: int, total: int} */
+    public function getStats(): array
+    {
+        $row = $this->createQueryBuilder('l')
+            ->select('COUNT(l.id) AS total')
+            ->addSelect('SUM(CASE WHEN l.returnedAt IS NULL THEN 1 ELSE 0 END) AS active')
+            ->addSelect('SUM(CASE WHEN l.returnedAt IS NULL AND l.dueAt < :today THEN 1 ELSE 0 END) AS overdue')
+            ->addSelect('SUM(CASE WHEN l.returnedAt IS NOT NULL THEN 1 ELSE 0 END) AS returned')
+            ->setParameter('today', new \DateTimeImmutable('today'), 'date_immutable')
+            ->getQuery()
+            ->getSingleResult();
 
         return array_map('intval', $row);
     }
 
-    /** Les amis qui empruntent le plus, avec leur taux de retour à l'heure. */
-    public function topBorrowers(int $limit = 5): array
+    /**
+     * Les amis qui empruntent le plus, avec le nombre de retours à l'heure.
+     *
+     * @return list<array{friend: Friend, loans: int, returned: int, onTime: int}>
+     */
+    public function findTopBorrowers(int $limit = 5): array
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT f.id, f.name,
-                    COUNT(*) AS loans,
-                    SUM(l.returned_at IS NOT NULL AND (l.due_at IS NULL OR l.returned_at <= l.due_at)) AS on_time,
-                    SUM(l.returned_at IS NOT NULL) AS returned
-             FROM loans l
-             JOIN friends f ON f.id = l.friend_id
-             GROUP BY f.id, f.name
-             ORDER BY loans DESC, f.name
-             LIMIT ?'
-        );
-        $stmt->bindValue(1, $limit, PDO::PARAM_INT);
-        $stmt->execute();
+        $rows = $this->getEntityManager()->createQueryBuilder()
+            ->select('f AS friend, COUNT(l.id) AS loans')
+            ->addSelect('SUM(CASE WHEN l.returnedAt IS NOT NULL THEN 1 ELSE 0 END) AS returned')
+            ->addSelect('SUM(CASE WHEN l.returnedAt IS NOT NULL AND (l.dueAt IS NULL OR l.returnedAt <= l.dueAt) THEN 1 ELSE 0 END) AS onTime')
+            ->from(Friend::class, 'f')
+            ->join('f.loans', 'l')
+            ->groupBy('f.id')
+            ->orderBy('loans', 'DESC')
+            ->addOrderBy('f.name')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
 
-        return $stmt->fetchAll();
+        return array_map(static fn (array $r) => [
+            'friend' => $r['friend'],
+            'loans' => (int) $r['loans'],
+            'returned' => (int) $r['returned'],
+            'onTime' => (int) $r['onTime'],
+        ], $rows);
+    }
+
+    private function withRelations(): QueryBuilder
+    {
+        return $this->createQueryBuilder('l')
+            ->addSelect('i', 'f')
+            ->join('l.item', 'i')
+            ->join('l.friend', 'f');
     }
 }

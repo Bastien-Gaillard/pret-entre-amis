@@ -1,123 +1,87 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Controller;
 
-use App\Csrf;
-use App\Flash;
-use App\HttpException;
-use App\Input;
+use App\Entity\Loan;
+use App\Enum\LoanStatus;
+use App\Exception\ItemAlreadyLentException;
+use App\Form\LoanType;
 use App\Repository\FriendRepository;
 use App\Repository\ItemRepository;
 use App\Repository\LoanRepository;
-use App\View;
-use DomainException;
+use App\Service\LoanManager;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Form\FormError;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-final class LoanController
+#[Route('/prets')]
+final class LoanController extends AbstractController
 {
-    public function __construct(
-        private readonly View $view,
-        private readonly LoanRepository $loans,
-        private readonly ItemRepository $items,
-        private readonly FriendRepository $friends,
-    ) {
-    }
-
-    public function history(): void
+    #[Route('', name: 'app_loan_history', methods: ['GET'])]
+    public function history(Request $request, LoanRepository $loans, FriendRepository $friends): Response
     {
-        $friendId = Input::int('friend');
-        $status = Input::nullable('status');
-        if ($status !== null && !array_key_exists($status, STATUS_LABELS)) {
-            $status = null;
-        }
+        $friend = $request->query->getInt('ami') > 0 ? $friends->find($request->query->getInt('ami')) : null;
+        $status = LoanStatus::tryFrom($request->query->getString('statut'));
 
-        $this->view->render('loans/history', [
-            'title'    => 'Historique des prêts',
-            'loans'    => $this->loans->history($friendId, $status),
-            'friends'  => $this->friends->all(),
-            'friendId' => $friendId,
-            'status'   => $status,
+        return $this->render('loan/history.html.twig', [
+            'loans' => $loans->findHistory($friend, $status),
+            'friends' => $friends->findBy([], ['name' => 'ASC']),
+            'currentFriend' => $friend,
+            'currentStatus' => $status,
+            'statuses' => LoanStatus::cases(),
         ]);
     }
 
-    public function create(): void
+    #[Route('/nouveau', name: 'app_loan_new', methods: ['GET', 'POST'])]
+    public function new(Request $request, LoanManager $manager, ItemRepository $items, FriendRepository $friends): Response
     {
-        $this->renderForm([
-            'item_id'   => Input::int('item'),
-            'friend_id' => Input::int('friend'),
-            'loaned_at' => date('Y-m-d'),
-            'due_at'    => date('Y-m-d', strtotime('+3 weeks')),
-            'notes'     => '',
-        ]);
-    }
-
-    public function store(): void
-    {
-        Csrf::verify();
-        $data = [
-            'item_id'   => Input::int('item_id'),
-            'friend_id' => Input::int('friend_id'),
-            'loaned_at' => Input::date('loaned_at'),
-            'due_at'    => Input::date('due_at'),
-            'notes'     => Input::nullable('notes'),
-        ];
-        $errors = [];
-
-        if ($data['item_id'] === null || $this->items->find($data['item_id']) === null) {
-            $errors['item_id'] = 'Choisis un objet.';
+        $loan = (new Loan())->setDueAt(new \DateTimeImmutable('today +3 weeks'));
+        // Pré-remplissage depuis les boutons « Prêter » des listes d'objets et d'amis.
+        if ($itemId = $request->query->getInt('objet')) {
+            $loan->setItem($items->find($itemId));
         }
-        if ($data['friend_id'] === null || $this->friends->find($data['friend_id']) === null) {
-            $errors['friend_id'] = 'Choisis un ami.';
-        }
-        if ($data['loaned_at'] === null) {
-            $errors['loaned_at'] = 'Date de prêt invalide.';
-        } elseif ($data['loaned_at'] > date('Y-m-d')) {
-            $errors['loaned_at'] = 'La date de prêt ne peut pas être dans le futur.';
-        }
-        if (Input::string('due_at') !== '' && $data['due_at'] === null) {
-            $errors['due_at'] = 'Date de retour invalide.';
-        } elseif ($data['due_at'] !== null && $data['loaned_at'] !== null && $data['due_at'] < $data['loaned_at']) {
-            $errors['due_at'] = 'La date de retour doit être après la date de prêt.';
-        }
-        if ($data['notes'] !== null && mb_strlen($data['notes']) > 255) {
-            $errors['notes'] = '255 caractères maximum.';
+        if ($friendId = $request->query->getInt('ami')) {
+            $loan->setFriend($friends->find($friendId));
         }
 
-        if (!$errors) {
+        $form = $this->createForm(LoanType::class, $loan)->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
             try {
-                $this->loans->create($data['item_id'], $data['friend_id'], $data['loaned_at'], $data['due_at'], $data['notes']);
-                Flash::add('success', 'Prêt enregistré.');
-                redirect('/');
-            } catch (DomainException $e) {
-                $errors['item_id'] = $e->getMessage();
+                $manager->lend($loan);
+                $this->addFlash('success', sprintf('« %s » est prêté à %s.', $loan->getItem()->getName(), $loan->getFriend()->getName()));
+
+                return $this->redirectToRoute('app_dashboard', status: Response::HTTP_SEE_OTHER);
+            } catch (ItemAlreadyLentException $e) {
+                $form->get('item')->addError(new FormError($e->getMessage()));
             }
         }
 
-        $this->renderForm($data, $errors);
+        return $this->render('loan/new.html.twig', [
+            'form' => $form,
+            'hasItems' => $items->availableQueryBuilder()->select('COUNT(i.id)')->resetDQLPart('orderBy')->getQuery()->getSingleScalarResult() > 0,
+            'hasFriends' => $friends->count() > 0,
+        ]);
     }
 
-    public function markReturned(int $id): void
+    #[Route('/{id}/rendu', name: 'app_loan_return', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function markReturned(Request $request, Loan $loan, LoanManager $manager): Response
     {
-        Csrf::verify();
-        $loan = $this->loans->find($id) ?? throw new HttpException(404);
-
-        if ($this->loans->markReturned($id, date('Y-m-d'))) {
-            Flash::add('success', sprintf('« %s » est revenu de chez %s.', $loan['item_name'], $loan['friend_name']));
-        } else {
-            Flash::add('error', 'Ce prêt était déjà marqué comme rendu.');
+        if (!$this->isCsrfTokenValid('return-loan-' . $loan->getId(), $request->getPayload()->getString('_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
         }
-        redirect(Input::string('back') === 'history' ? '/loans' : '/');
-    }
 
-    private function renderForm(array $loan, array $errors = []): void
-    {
-        $this->view->render('loans/form', [
-            'title'   => 'Nouveau prêt',
-            'loan'    => $loan,
-            'errors'  => $errors,
-            'items'   => $this->items->available(),
-            'friends' => $this->friends->all(),
-        ], $errors ? 422 : 200);
+        if ($loan->isReturned()) {
+            $this->addFlash('error', 'Ce prêt était déjà marqué comme rendu.');
+        } else {
+            $manager->markReturned($loan);
+            $this->addFlash('success', sprintf('« %s » est revenu de chez %s.', $loan->getItem()->getName(), $loan->getFriend()->getName()));
+        }
+
+        $back = $request->getPayload()->getString('back');
+
+        return $this->redirect(str_starts_with($back, '/') && !str_starts_with($back, '//') ? $back : $this->generateUrl('app_dashboard'), Response::HTTP_SEE_OTHER);
     }
 }

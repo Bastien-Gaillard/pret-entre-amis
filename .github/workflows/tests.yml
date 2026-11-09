@@ -5,24 +5,24 @@ on:
   pull_request:
 
 jobs:
-  phpunit:
+  tests:
     runs-on: ubuntu-latest
 
     services:
       mysql:
         image: mysql:8.4
         env:
-          MYSQL_DATABASE: prets_test
-          MYSQL_USER: prets
-          MYSQL_PASSWORD: prets
           MYSQL_ROOT_PASSWORD: root
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uprets -pprets"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
+
+    env:
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/prets?serverVersion=8.4.0&charset=utf8mb4"
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: pdo_mysql
+          extensions: pdo_mysql, intl
           coverage: none
 
       - name: Cache Composer
@@ -41,5 +41,14 @@ jobs:
 
       - run: composer install --no-interaction --no-progress
 
-      - name: Tests unitaires et d'intégration
+      - name: Lint (Twig, conteneur, YAML)
+        run: |
+          php bin/console lint:twig templates
+          php bin/console lint:yaml config
+          php bin/console lint:container
+
+      - name: Tests (unitaires, intégration, fonctionnels)
         run: vendor/bin/phpunit --testdox
+
+      - name: Schéma Doctrine synchronisé avec les migrations
+        run: php bin/console doctrine:schema:validate --env=test

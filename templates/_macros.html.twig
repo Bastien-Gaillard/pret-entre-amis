@@ -1,0 +1,79 @@
+{# Icônes SVG inline (tracés simples, 24×24, couleur héritée). #}
+{% macro icon(name, size = 20) %}
+    {%- set paths = {
+        home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/>',
+        box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/>',
+        users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14.5c2.2.3 3.7 2 4 4.5"/>',
+        clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+        plus: '<path d="M12 5v14M5 12h14"/>',
+        check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+        edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+        trash: '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+        mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 7 8.5-7"/>',
+        phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+        arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+        alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.01"/>',
+        share: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
+    } -%}
+    <svg class="icon" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name]|raw }}</svg>
+{%- endmacro %}
+
+{% macro avatar(friend, size = 'md') %}
+    <span class="avatar avatar-{{ size }}" style="--hue: {{ friend.name|avatar_hue }}" aria-hidden="true">{{ friend.name|initials }}</span>
+{%- endmacro %}
+
+{% macro return_button(loan, back = null) %}
+    <form method="post" action="{{ path('app_loan_return', {id: loan.id}) }}">
+        <input type="hidden" name="_token" value="{{ csrf_token('return-loan-' ~ loan.id) }}">
+        {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+        <button class="btn btn-sm btn-success">{{ _self.icon('check', 16) }} Rendu</button>
+    </form>
+{%- endmacro %}
+
+{% macro delete_button(route, id, token_id, confirm) %}
+    <form method="post" action="{{ path(route, {id: id}) }}" data-confirm="{{ confirm }}">
+        <input type="hidden" name="_token" value="{{ csrf_token(token_id) }}">
+        <button class="btn btn-sm btn-icon btn-ghost-danger" title="Supprimer" aria-label="Supprimer">{{ _self.icon('trash', 16) }}</button>
+    </form>
+{%- endmacro %}
+
+{# Carte d'un prêt en cours, utilisée sur le tableau de bord. #}
+{% macro loan_card(loan) %}
+    {% set status = loan.status.value %}
+    {% set progress = loan.progress %}
+    <article class="loan-card loan-{{ status }}">
+        <div class="loan-thing">
+            <span class="thing-icon cat-{{ loan.item.category.value }}" aria-hidden="true">{{ loan.item.category.emoji }}</span>
+            <div>
+                <h3>{{ loan.item.name }}</h3>
+                <p class="loan-who">
+                    {{ _self.avatar(loan.friend, 'xs') }}
+                    chez <a href="{{ path('app_loan_history', {ami: loan.friend.id}) }}">{{ loan.friend.name }}</a>
+                    <span class="dot">·</span> depuis le {{ loan.loanedAt|date_fr }}
+                </p>
+            </div>
+        </div>
+
+        <div class="loan-due">
+            <span class="due-label">{{ loan|due_label }}</span>
+            {% if progress is not null %}
+                <div class="progress" role="progressbar" aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100" aria-label="Avancement du prêt">
+                    <span style="width: {{ progress }}%"></span>
+                </div>
+                <span class="due-date">retour prévu le {{ loan.dueAt|date_fr }}</span>
+            {% endif %}
+        </div>
+
+        <div class="loan-actions">
+            {% if status == 'en_retard' and loan.friend.email %}
+                {% set body = 'Salut ' ~ loan.friend.name ~ ' ! Petit rappel : tu as toujours mon objet « ' ~ loan.item.name ~ ' », que tu devais me rendre le ' ~ loan.dueAt|date_fr ~ '. Tu me dis quand ça t\'arrange ? Merci 🙂' %}
+                <a class="btn btn-sm btn-soft" href="mailto:{{ loan.friend.email }}?subject={{ ('Mon objet : ' ~ loan.item.name)|url_encode }}&body={{ body|url_encode }}">{{ _self.icon('mail', 16) }} Relancer</a>
+            {% endif %}
+            {{ _self.return_button(loan) }}
+        </div>
+    </article>
+{%- endmacro %}
+
+{% macro status_pill(status) %}
+    <span class="pill pill-{{ status.value }}">{{ status.label }}</span>
+{%- endmacro %}

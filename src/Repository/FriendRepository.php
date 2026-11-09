@@ -1,63 +1,46 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Repository;
 
-use PDO;
+use App\Entity\Friend;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
+use Doctrine\Persistence\ManagerRegistry;
 
-final class FriendRepository
+/** @extends ServiceEntityRepository<Friend> */
+class FriendRepository extends ServiceEntityRepository
 {
-    public function __construct(private readonly PDO $pdo)
+    public function __construct(ManagerRegistry $registry)
     {
+        parent::__construct($registry, Friend::class);
     }
 
-    /** Liste des amis avec le nombre de prêts en cours et au total. */
-    public function allWithStats(): array
+    /**
+     * Amis triés par nom, avec leurs compteurs de prêts.
+     *
+     * @return list<array{friend: Friend, total: int, active: int}>
+     */
+    public function findAllWithStats(): array
     {
-        return $this->pdo->query(
-            'SELECT f.*,
-                    COUNT(l.id)                                           AS total_loans,
-                    COALESCE(SUM(l.id IS NOT NULL AND l.returned_at IS NULL), 0) AS active_loans
-             FROM friends f
-             LEFT JOIN loans l ON l.friend_id = f.id
-             GROUP BY f.id
-             ORDER BY f.name'
-        )->fetchAll();
+        $rows = $this->createQueryBuilder('f')
+            ->select('f AS friend')
+            ->addSelect('COUNT(l.id) AS total')
+            ->addSelect('SUM(CASE WHEN l.id IS NOT NULL AND l.returnedAt IS NULL THEN 1 ELSE 0 END) AS active')
+            ->leftJoin('f.loans', 'l')
+            ->groupBy('f.id')
+            ->orderBy('f.name')
+            ->getQuery()
+            ->getResult();
+
+        return array_map(static fn (array $r) => [
+            'friend' => $r['friend'],
+            'total' => (int) $r['total'],
+            'active' => (int) $r['active'],
+        ], $rows);
     }
 
-    public function all(): array
+    public function orderedByNameQueryBuilder(): QueryBuilder
     {
-        return $this->pdo->query('SELECT id, name FROM friends ORDER BY name')->fetchAll();
-    }
-
-    public function find(int $id): ?array
-    {
-        $stmt = $this->pdo->prepare('SELECT * FROM friends WHERE id = ?');
-        $stmt->execute([$id]);
-
-        return $stmt->fetch() ?: null;
-    }
-
-    /** @param array{name: string, email: ?string, phone: ?string} $data */
-    public function create(array $data): int
-    {
-        $stmt = $this->pdo->prepare('INSERT INTO friends (name, email, phone) VALUES (:name, :email, :phone)');
-        $stmt->execute($data);
-
-        return (int) $this->pdo->lastInsertId();
-    }
-
-    /** @param array{name: string, email: ?string, phone: ?string} $data */
-    public function update(int $id, array $data): void
-    {
-        $stmt = $this->pdo->prepare('UPDATE friends SET name = :name, email = :email, phone = :phone WHERE id = :id');
-        $stmt->execute($data + ['id' => $id]);
-    }
-
-    /** Lève une PDOException (23000) si l'ami a un historique de prêts. */
-    public function delete(int $id): void
-    {
-        $this->pdo->prepare('DELETE FROM friends WHERE id = ?')->execute([$id]);
+        return $this->createQueryBuilder('f')->orderBy('f.name');
     }
 }

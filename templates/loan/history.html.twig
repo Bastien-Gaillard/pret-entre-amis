@@ -1,0 +1,68 @@
+{% extends 'base.html.twig' %}
+{% import '_macros.html.twig' as ui %}
+
+{% block title %}Historique{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1>{% if currentFriend %}Prêts à {{ currentFriend.name }}{% else %}Historique des prêts{% endif %}</h1>
+        <p class="lead">{{ loans|length }} prêt{{ loans|length > 1 ? 's' }}{{ currentStatus ? ' « ' ~ currentStatus.label|lower ~ ' »' }}.</p>
+    </div>
+</div>
+
+<form method="get" class="filters" data-autosubmit>
+    <label class="select">
+        <span class="sr-only">Ami</span>
+        <select name="ami">
+            <option value="">Tous les amis</option>
+            {% for friend in friends %}
+                <option value="{{ friend.id }}"{% if currentFriend and currentFriend.id == friend.id %} selected{% endif %}>{{ friend.name }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <div class="segmented" role="group" aria-label="Statut">
+        <label><input type="radio" name="statut" value=""{% if currentStatus is null %} checked{% endif %}><span>Tous</span></label>
+        {% for status in statuses %}
+            <label><input type="radio" name="statut" value="{{ status.value }}"{% if currentStatus == status %} checked{% endif %}><span>{{ status.label }}</span></label>
+        {% endfor %}
+    </div>
+    <noscript><button class="btn btn-sm">Filtrer</button></noscript>
+</form>
+
+{% if loans is empty %}
+    <div class="empty">
+        <span class="empty-emoji">🔍</span>
+        <p>Aucun prêt ne correspond à ces filtres.</p>
+    </div>
+{% else %}
+    <div class="table-card">
+        <table class="table">
+            <thead>
+                <tr><th>Objet</th><th>Ami</th><th>Prêté le</th><th>Prévu le</th><th>Rendu le</th><th>Statut</th><th><span class="sr-only">Actions</span></th></tr>
+            </thead>
+            <tbody>
+            {% for loan in loans %}
+                <tr class="row-{{ loan.status.value }}">
+                    <td data-label="Objet">
+                        <div class="cell-thing">
+                            <span class="thing-icon thing-icon-sm cat-{{ loan.item.category.value }}" aria-hidden="true">{{ loan.item.category.emoji }}</span>
+                            <div>
+                                <strong>{{ loan.item.name }}</strong>
+                                {% if loan.notes %}<span class="muted small block">{{ loan.notes }}</span>{% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td data-label="Ami"><span class="where">{{ ui.avatar(loan.friend, 'xs') }}{{ loan.friend.name }}</span></td>
+                    <td data-label="Prêté le">{{ loan.loanedAt|date_fr }}</td>
+                    <td data-label="Prévu le">{{ loan.dueAt|date_fr }}</td>
+                    <td data-label="Rendu le">{{ loan.returnedAt|date_fr }}</td>
+                    <td data-label="Statut">{{ ui.status_pill(loan.status) }}</td>
+                    <td class="cell-actions">{% if not loan.returned %}{{ ui.return_button(loan, app.request.requestUri) }}{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+{% endblock %}

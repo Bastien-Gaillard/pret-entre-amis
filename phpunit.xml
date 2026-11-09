@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
          failOnRisky="true"
-         failOnWarning="true">
+         failOnWarning="true"
+         cacheDirectory=".phpunit.cache">
+    <php>
+        <ini name="display_errors" value="1"/>
+        <server name="APP_ENV" value="test" force="true"/>
+        <server name="KERNEL_CLASS" value="App\Kernel"/>
+        <server name="SHELL_VERBOSITY" value="-1"/>
+    </php>
     <testsuites>
         <testsuite name="unit">
             <directory>tests/Unit</directory>
@@ -12,14 +19,10 @@
         <testsuite name="integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <testsuite name="functional">
+            <directory>tests/Functional</directory>
+        </testsuite>
     </testsuites>
-    <php>
-        <!-- Base dédiée aux tests : elle est vidée à chaque test. -->
-        <env name="DB_HOST" value="127.0.0.1"/>
-        <env name="DB_NAME" value="prets_test"/>
-        <env name="DB_USER" value="prets"/>
-        <env name="DB_PASSWORD" value="prets"/>
-    </php>
     <source>
         <include>
             <directory>src</directory>

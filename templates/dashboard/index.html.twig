@@ -1,0 +1,95 @@
+{% extends 'base.html.twig' %}
+{% import '_macros.html.twig' as ui %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block body %}
+<section class="hero">
+    <div>
+        <p class="eyebrow">{{ 'now'|date('l j F')|replace({
+            Monday: 'Lundi', Tuesday: 'Mardi', Wednesday: 'Mercredi', Thursday: 'Jeudi', Friday: 'Vendredi', Saturday: 'Samedi', Sunday: 'Dimanche',
+            January: 'janvier', February: 'février', March: 'mars', April: 'avril', May: 'mai', June: 'juin', July: 'juillet', August: 'août', September: 'septembre', October: 'octobre', November: 'novembre', December: 'décembre'
+        }) }}</p>
+        <h1>
+            {% if stats.active == 0 %}Tout est à la maison 🏡
+            {% elseif stats.overdue > 0 %}{{ stats.overdue }} objet{{ stats.overdue > 1 ? 's' }} à récupérer
+            {% else %}Tout roule, aucun retard 👌
+            {% endif %}
+        </h1>
+        <p class="lead">
+            {% if stats.active > 0 %}
+                {{ stats.active }} objet{{ stats.active > 1 ? 's' }} prêté{{ stats.active > 1 ? 's' }} en ce moment, {{ stats.returned }} déjà revenu{{ stats.returned > 1 ? 's' }}.
+            {% else %}
+                Quand tu prêtes quelque chose, note-le ici pour ne plus jamais te demander où est passée ta perceuse.
+            {% endif %}
+        </p>
+    </div>
+    <dl class="stats">
+        <div class="stat"><dt>En cours</dt><dd>{{ stats.active }}</dd></div>
+        <div class="stat stat-late"><dt>En retard</dt><dd>{{ stats.overdue }}</dd></div>
+        <div class="stat"><dt>Rendus</dt><dd>{{ stats.returned }}</dd></div>
+    </dl>
+</section>
+
+<div class="dashboard">
+    <div class="dashboard-main">
+        {% if overdue %}
+            <section class="block">
+                <h2 class="block-title block-title-late">{{ ui.icon('alert', 18) }} En retard</h2>
+                <div class="loan-list">
+                    {% for loan in overdue %}{{ ui.loan_card(loan) }}{% endfor %}
+                </div>
+            </section>
+        {% endif %}
+
+        <section class="block">
+            <h2 class="block-title">Chez les copains</h2>
+            {% if ongoing %}
+                <div class="loan-list">
+                    {% for loan in ongoing %}{{ ui.loan_card(loan) }}{% endfor %}
+                </div>
+            {% elseif not overdue %}
+                <div class="empty">
+                    <span class="empty-emoji">🏡</span>
+                    <p>Rien n'est prêté en ce moment.</p>
+                    <a href="{{ path('app_loan_new') }}" class="btn btn-primary">{{ ui.icon('plus', 18) }} Enregistrer un prêt</a>
+                </div>
+            {% else %}
+                <p class="muted">Aucun autre prêt en cours.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <aside class="dashboard-side">
+        <section class="panel">
+            <h2 class="panel-title">Les plus gros emprunteurs</h2>
+            {% if topBorrowers %}
+                <ol class="leaderboard">
+                    {% for row in topBorrowers %}
+                        <li>
+                            {{ ui.avatar(row.friend, 'sm') }}
+                            <div class="leader-info">
+                                <a href="{{ path('app_loan_history', {ami: row.friend.id}) }}">{{ row.friend.name }}</a>
+                                <span class="muted">
+                                    {{ row.loans }} prêt{{ row.loans > 1 ? 's' }}
+                                    {% if row.returned > 0 %}· {{ row.onTime }}/{{ row.returned }} rendu{{ row.returned > 1 ? 's' }} à l'heure{% endif %}
+                                </span>
+                            </div>
+                            {% if row.returned > 0 %}
+                                {% set rate = (row.onTime / row.returned * 100)|round %}
+                                <span class="score {{ rate >= 75 ? 'score-good' : (rate >= 40 ? 'score-mid' : 'score-bad') }}" title="Taux de retour à l'heure">{{ rate }}%</span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ol>
+            {% else %}
+                <p class="muted">Le classement apparaîtra après tes premiers prêts.</p>
+            {% endif %}
+        </section>
+
+        <section class="panel panel-tip">
+            <p><strong>Astuce</strong> — quand un ami a une adresse e-mail, le bouton <em>Relancer</em> prépare un petit message de rappel tout fait.</p>
+        </section>
+    </aside>
+</div>
+{% endblock %}

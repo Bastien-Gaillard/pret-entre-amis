@@ -1,8 +1,10 @@
+/.env.local
+/.env.local.php
+/.env.*.local
+/var/
 /vendor/
-.env
-.idea/
-.vscode/
-*.log
-
+/composer.local.*
 .phpunit.cache/
 .phpunit.result.cache
+.idea/
+.vscode/

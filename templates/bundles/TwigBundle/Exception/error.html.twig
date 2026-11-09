@@ -1,0 +1,9 @@
+{% extends 'base.html.twig' %}
+{% block title %}Oups{% endblock %}
+{% block body %}
+<div class="empty">
+    <span class="empty-emoji">{{ status_code == 404 ? '🧭' : '🔧' }}</span>
+    <h1>{{ status_code == 404 ? 'Page introuvable' : 'Quelque chose s\'est mal passé' }}</h1>
+    <p><a href="{{ path('app_dashboard') }}" class="btn btn-primary">Retour à l'accueil</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends 'base.html.twig' %}
+{% import '_macros.html.twig' as ui %}
+
+{% block body %}
+<div class="form-page">
+    <a href="{{ back_url }}" class="back">← Retour</a>
+    <h1>{{ block('title') }}</h1>
+    {% block intro %}{% endblock %}
+    <div class="form-card">
+        {% block form %}
+            {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+                {{ form_widget(form) }}
+                <div class="form-actions">
+                    <button class="btn btn-primary">{{ submit_label|default('Enregistrer') }}</button>
+                    <a href="{{ back_url }}" class="btn btn-ghost">Annuler</a>
+                </div>
+            {{ form_end(form) }}
+        {% endblock %}
+    </div>
+</div>
+{% endblock %}

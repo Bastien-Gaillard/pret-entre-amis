@@ -1,0 +1,50 @@
+{% extends 'base.html.twig' %}
+{% import '_macros.html.twig' as ui %}
+
+{% block title %}Amis{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1>Mes amis</h1>
+        <p class="lead">Les personnes à qui tu prêtes tes affaires.</p>
+    </div>
+    <a href="{{ path('app_friend_new') }}" class="btn">{{ ui.icon('plus', 18) }} Ajouter un ami</a>
+</div>
+
+{% if rows is empty %}
+    <div class="empty">
+        <span class="empty-emoji">👋</span>
+        <p>Aucun ami enregistré pour l'instant.</p>
+        <a href="{{ path('app_friend_new') }}" class="btn btn-primary">{{ ui.icon('plus', 18) }} Ajouter un ami</a>
+    </div>
+{% else %}
+    <div class="grid">
+        {% for row in rows %}
+            {% set friend = row.friend %}
+            <article class="card friend-card">
+                <div class="card-top">
+                    {{ ui.avatar(friend, 'lg') }}
+                    <div class="card-tools">
+                        <a href="{{ path('app_friend_edit', {id: friend.id}) }}" class="btn btn-sm btn-icon btn-ghost" title="Modifier" aria-label="Modifier">{{ ui.icon('edit', 16) }}</a>
+                        {{ ui.delete_button('app_friend_delete', friend.id, 'delete-friend-' ~ friend.id, 'Supprimer ' ~ friend.name ~ ' ?') }}
+                    </div>
+                </div>
+                <h3>{{ friend.name }}</h3>
+                <ul class="contact">
+                    {% if friend.email %}<li>{{ ui.icon('mail', 15) }}<a href="mailto:{{ friend.email }}">{{ friend.email }}</a></li>{% endif %}
+                    {% if friend.phone %}<li>{{ ui.icon('phone', 15) }}<a href="tel:{{ friend.phone|replace({' ': ''}) }}">{{ friend.phone }}</a></li>{% endif %}
+                    {% if not friend.email and not friend.phone %}<li class="muted">Pas de coordonnées</li>{% endif %}
+                </ul>
+                <div class="card-foot">
+                    <a href="{{ path('app_loan_history', {ami: friend.id}) }}" class="counts">
+                        {% if row.active > 0 %}<span class="pill pill-en_cours">{{ row.active }} en cours</span>{% endif %}
+                        <span class="muted small">{{ row.total }} prêt{{ row.total > 1 ? 's' }} au total</span>
+                    </a>
+                    <a href="{{ path('app_loan_new', {ami: friend.id}) }}" class="link-action">Prêter {{ ui.icon('arrow', 16) }}</a>
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

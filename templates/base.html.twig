@@ -1,0 +1,55 @@
+{% import '_macros.html.twig' as ui %}
+{% set route = app.request.attributes.get('_route') %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>{% block title %}Prêts entre amis{% endblock %} · Prêts entre amis</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+    <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
+    <script src="{{ asset('scripts/app.js') }}" defer></script>
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <a href="{{ path('app_dashboard') }}" class="brand">
+            <span class="brand-mark" aria-hidden="true">{{ ui.icon('box', 22) }}</span>
+            <span>Prêts <em>entre amis</em></span>
+        </a>
+
+        <nav class="mainnav" aria-label="Navigation principale">
+            {% for item in [
+                {route: 'app_dashboard', prefix: 'app_dashboard', label: 'Accueil', icon: 'home'},
+                {route: 'app_item_index', prefix: 'app_item', label: 'Objets', icon: 'box'},
+                {route: 'app_friend_index', prefix: 'app_friend', label: 'Amis', icon: 'users'},
+                {route: 'app_loan_history', prefix: 'app_loan_history', label: 'Historique', icon: 'clock'},
+            ] %}
+                <a href="{{ path(item.route) }}"{% if route starts with item.prefix %} aria-current="page"{% endif %}>
+                    {{ ui.icon(item.icon, 20) }}<span>{{ item.label }}</span>
+                </a>
+            {% endfor %}
+        </nav>
+
+        <a href="{{ path('app_loan_new') }}" class="btn btn-primary btn-lend">{{ ui.icon('plus', 18) }}<span>Prêter un objet</span></a>
+    </div>
+</header>
+
+<main class="page">
+    {% for type, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="toast toast-{{ type }}" role="status">
+                {{ ui.icon(type == 'success' ? 'check' : 'alert', 18) }}
+                <span>{{ message }}</span>
+                <button type="button" class="toast-close" aria-label="Fermer">×</button>
+            </div>
+        {% endfor %}
+    {% endfor %}
+
+    {% block body %}{% endblock %}
+</main>
+
+<footer class="footer">Fait avec Symfony 7.4 &amp; Doctrine · <a href="https://github.com/">code source</a></footer>
+</body>
+</html>

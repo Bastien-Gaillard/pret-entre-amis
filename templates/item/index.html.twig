@@ -1,0 +1,65 @@
+{% extends 'base.html.twig' %}
+{% import '_macros.html.twig' as ui %}
+
+{% block title %}Objets{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1>Mes objets</h1>
+        <p class="lead">{{ counts|reduce((sum, n) => sum + n, 0) }} objets, dont {{ activeLoans|length }} prêté{{ activeLoans|length > 1 ? 's' }}.</p>
+    </div>
+    <a href="{{ path('app_item_new') }}" class="btn">{{ ui.icon('plus', 18) }} Ajouter un objet</a>
+</div>
+
+{% if counts %}
+<nav class="chips" aria-label="Filtrer par catégorie">
+    <a href="{{ path('app_item_index') }}"{% if current is null %} aria-current="page"{% endif %}>Tous</a>
+    {% for category in enum('App\\Enum\\ItemCategory').cases() %}
+        {% if counts[category.value] is defined %}
+            <a href="{{ path('app_item_index', {categorie: category.value}) }}"{% if current == category %} aria-current="page"{% endif %}>
+                {{ category.emoji }} {{ category.label }} <span class="chip-count">{{ counts[category.value] }}</span>
+            </a>
+        {% endif %}
+    {% endfor %}
+</nav>
+{% endif %}
+
+{% if items is empty %}
+    <div class="empty">
+        <span class="empty-emoji">📦</span>
+        <p>Aucun objet {{ current ? 'dans cette catégorie' : 'pour l\'instant' }}.</p>
+        <a href="{{ path('app_item_new') }}" class="btn btn-primary">{{ ui.icon('plus', 18) }} Ajouter un objet</a>
+    </div>
+{% else %}
+    <div class="grid">
+        {% for item in items %}
+            {% set loan = activeLoans[item.id] ?? null %}
+            <article class="card item-card{{ loan ? ' is-lent' : '' }}">
+                <div class="card-top">
+                    <span class="thing-icon cat-{{ item.category.value }}" aria-hidden="true">{{ item.category.emoji }}</span>
+                    <div class="card-tools">
+                        <a href="{{ path('app_item_edit', {id: item.id}) }}" class="btn btn-sm btn-icon btn-ghost" title="Modifier" aria-label="Modifier">{{ ui.icon('edit', 16) }}</a>
+                        {{ ui.delete_button('app_item_delete', item.id, 'delete-item-' ~ item.id, 'Supprimer « ' ~ item.name ~ ' » ?') }}
+                    </div>
+                </div>
+                <h3>{{ item.name }}</h3>
+                <p class="muted small">{{ item.category.label }}{% if item.notes %} · {{ item.notes }}{% endif %}</p>
+
+                <div class="card-foot">
+                    {% if loan %}
+                        <span class="where">
+                            {{ ui.avatar(loan.friend, 'xs') }}
+                            <span>Chez <strong>{{ loan.friend.name }}</strong></span>
+                        </span>
+                        {% if loan.status.value == 'en_retard' %}{{ ui.status_pill(loan.status) }}{% endif %}
+                    {% else %}
+                        <span class="pill pill-home">À la maison</span>
+                        <a href="{{ path('app_loan_new', {objet: item.id}) }}" class="link-action">Prêter {{ ui.icon('arrow', 16) }}</a>
+                    {% endif %}
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

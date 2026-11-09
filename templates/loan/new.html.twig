@@ -1,0 +1,33 @@
+{% extends '_form_page.html.twig' %}
+{% set back_url = path('app_dashboard') %}
+{% set submit_label = 'Enregistrer le prêt' %}
+{% block title %}Prêter un objet{% endblock %}
+
+{% block intro %}<p class="lead">Note à qui tu prêtes quoi, et quand tu aimerais le récupérer.</p>{% endblock %}
+
+{% block form %}
+    {% if not hasItems or not hasFriends %}
+        <div class="empty empty-inline">
+            <span class="empty-emoji">🤔</span>
+            <p>Pour prêter quelque chose, il faut au moins
+                {% if not hasItems %}<a href="{{ path('app_item_new') }}">un objet disponible</a>{% endif %}
+                {% if not hasItems and not hasFriends %} et {% endif %}
+                {% if not hasFriends %}<a href="{{ path('app_friend_new') }}">un ami</a>{% endif %}.
+            </p>
+        </div>
+    {% else %}
+        {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+            {{ form_row(form.item) }}
+            {{ form_row(form.friend) }}
+            <div class="form-cols">
+                {{ form_row(form.loanedAt) }}
+                {{ form_row(form.dueAt) }}
+            </div>
+            {{ form_rest(form) }}
+            <div class="form-actions">
+                <button class="btn btn-primary">{{ submit_label }}</button>
+                <a href="{{ back_url }}" class="btn btn-ghost">Annuler</a>
+            </div>
+        {{ form_end(form) }}
+    {% endif %}
+{% endblock %}

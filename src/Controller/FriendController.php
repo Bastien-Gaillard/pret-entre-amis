@@ -1,145 +1,72 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Controller;
 
-use App\Csrf;
-use App\Flash;
-use App\HttpException;
-use App\Input;
+use App\Entity\Friend;
+use App\Form\FriendType;
 use App\Repository\FriendRepository;
-use App\View;
-use PDOException;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-final class FriendController
+#[Route('/amis')]
+final class FriendController extends AbstractController
 {
-    public function __construct(
-        private readonly View $view,
-        private readonly FriendRepository $friends,
-    ) {
+    public function __construct(private readonly EntityManagerInterface $em)
+    {
     }
 
-    public function index(): void
+    #[Route('', name: 'app_friend_index', methods: ['GET'])]
+    public function index(FriendRepository $friends): Response
     {
-        $this->view->render('friends/index', [
-            'title'   => 'Amis',
-            'friends' => $this->friends->allWithStats(),
-        ]);
+        return $this->render('friend/index.html.twig', ['rows' => $friends->findAllWithStats()]);
     }
 
-    public function create(): void
+    #[Route('/nouveau', name: 'app_friend_new', methods: ['GET', 'POST'])]
+    public function new(Request $request): Response
     {
-        $this->renderForm(['name' => '', 'email' => '', 'phone' => '']);
+        return $this->handleForm($request, new Friend(), 'Ajouter un ami');
     }
 
-    public function store(): void
+    #[Route('/{id}/modifier', name: 'app_friend_edit', requirements: ['id' => '\d+'], methods: ['GET', 'POST'])]
+    public function edit(Request $request, Friend $friend): Response
     {
-        Csrf::verify();
-        [$data, $errors] = $this->validate();
-        if ($errors) {
-            $this->renderForm($data, $errors);
-            return;
+        return $this->handleForm($request, $friend, 'Modifier ' . $friend->getName());
+    }
+
+    #[Route('/{id}/supprimer', name: 'app_friend_delete', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function delete(Request $request, Friend $friend): Response
+    {
+        if (!$this->isCsrfTokenValid('delete-friend-' . $friend->getId(), $request->getPayload()->getString('_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
         }
 
-        try {
-            $this->friends->create($data);
-        } catch (PDOException $e) {
-            $this->renderForm($data, $this->duplicateError($e));
-            return;
+        if (!$friend->getLoans()->isEmpty()) {
+            $this->addFlash('error', sprintf('Impossible de supprimer %s : il ou elle a un historique de prêts.', $friend->getName()));
+        } else {
+            $this->em->remove($friend);
+            $this->em->flush();
+            $this->addFlash('success', sprintf('%s a été supprimé(e).', $friend->getName()));
         }
-        Flash::add('success', sprintf('%s a été ajouté(e).', $data['name']));
-        redirect('/friends');
+
+        return $this->redirectToRoute('app_friend_index', status: Response::HTTP_SEE_OTHER);
     }
 
-    public function edit(int $id): void
+    private function handleForm(Request $request, Friend $friend, string $title): Response
     {
-        $this->renderForm($this->findOrFail($id), [], $id);
-    }
+        $form = $this->createForm(FriendType::class, $friend)->handleRequest($request);
 
-    public function update(int $id): void
-    {
-        Csrf::verify();
-        $this->findOrFail($id);
-        [$data, $errors] = $this->validate();
-        if ($errors) {
-            $this->renderForm($data, $errors, $id);
-            return;
+        if ($form->isSubmitted() && $form->isValid()) {
+            $isNew = $friend->getId() === null;
+            $this->em->persist($friend);
+            $this->em->flush();
+            $this->addFlash('success', $isNew ? sprintf('%s a été ajouté(e).', $friend->getName()) : 'Modifications enregistrées.');
+
+            return $this->redirectToRoute('app_friend_index', status: Response::HTTP_SEE_OTHER);
         }
 
-        try {
-            $this->friends->update($id, $data);
-        } catch (PDOException $e) {
-            $this->renderForm($data, $this->duplicateError($e), $id);
-            return;
-        }
-        Flash::add('success', 'Modifications enregistrées.');
-        redirect('/friends');
-    }
-
-    public function delete(int $id): void
-    {
-        Csrf::verify();
-        $friend = $this->findOrFail($id);
-        try {
-            $this->friends->delete($id);
-            Flash::add('success', sprintf('%s a été supprimé(e).', $friend['name']));
-        } catch (PDOException $e) {
-            if ($e->getCode() !== '23000') {
-                throw $e;
-            }
-            Flash::add('error', sprintf('Impossible de supprimer %s : il ou elle a un historique de prêts.', $friend['name']));
-        }
-        redirect('/friends');
-    }
-
-    /** @return array{0: array{name: string, email: ?string, phone: ?string}, 1: array<string, string>} */
-    private function validate(): array
-    {
-        $data = [
-            'name'  => Input::string('name'),
-            'email' => Input::nullable('email'),
-            'phone' => Input::nullable('phone'),
-        ];
-        $errors = [];
-
-        if ($data['name'] === '') {
-            $errors['name'] = 'Le nom est obligatoire.';
-        } elseif (mb_strlen($data['name']) > 100) {
-            $errors['name'] = '100 caractères maximum.';
-        }
-        if ($data['email'] !== null && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-            $errors['email'] = 'Adresse e-mail invalide.';
-        }
-        if ($data['phone'] !== null && !preg_match('/^[0-9 +().-]{6,30}$/', $data['phone'])) {
-            $errors['phone'] = 'Numéro de téléphone invalide.';
-        }
-
-        return [$data, $errors];
-    }
-
-    /** @return array<string, string> */
-    private function duplicateError(PDOException $e): array
-    {
-        if ($e->getCode() !== '23000') {
-            throw $e;
-        }
-
-        return ['name' => 'Un ami porte déjà ce nom.'];
-    }
-
-    private function findOrFail(int $id): array
-    {
-        return $this->friends->find($id) ?? throw new HttpException(404);
-    }
-
-    private function renderForm(array $friend, array $errors = [], ?int $id = null): void
-    {
-        $this->view->render('friends/form', [
-            'title'  => $id ? 'Modifier un ami' : 'Ajouter un ami',
-            'friend' => $friend,
-            'errors' => $errors,
-            'action' => $id ? "/friends/$id" : '/friends',
-        ], $errors ? 422 : 200);
+        return $this->render('friend/form.html.twig', ['form' => $form, 'title' => $title, 'friend' => $friend]);
     }
 }
