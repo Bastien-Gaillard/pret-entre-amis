@@ -1,6 +1,6 @@
 # 📦 Prêts entre amis
 
-![Tests](https://github.com/VOTRE-PSEUDO/pret-entre-amis/actions/workflows/tests.yml/badge.svg)
+![Tests](https://github.com/Bastien-Gaillard/pret-entre-amis/actions/workflows/tests.yml/badge.svg)
 
 **Qui a emprunté ma perceuse ?** Une petite application web pour suivre les objets qu'on prête à ses proches : qui a quoi, depuis quand, et qui est en retard.
 
