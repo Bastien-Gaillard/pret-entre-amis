@@ -28,19 +28,4 @@ enum ItemCategory: string
             self::Autre => 'Autre',
         };
     }
-
-    public function emoji(): string
-    {
-        return match ($this) {
-            self::Bricolage => '🔧',
-            self::Jardin => '🌱',
-            self::Camping => '⛺',
-            self::Sport => '🚲',
-            self::Cuisine => '🍳',
-            self::Livre => '📚',
-            self::Jeu => '🎲',
-            self::Multimedia => '🎧',
-            self::Autre => '📦',
-        };
-    }
 }

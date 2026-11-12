@@ -24,7 +24,7 @@ final class LoanType extends AbstractType
                 'class' => Item::class,
                 'query_builder' => fn (ItemRepository $r) => $r->availableQueryBuilder(),
                 'choice_label' => 'name',
-                'group_by' => fn (Item $i) => $i->getCategory()->emoji() . ' ' . $i->getCategory()->label(),
+                'group_by' => fn (Item $i) => $i->getCategory()->label(),
                 'placeholder' => '— Choisir un objet disponible —',
             ])
             ->add('friend', EntityType::class, [

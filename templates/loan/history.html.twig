@@ -46,7 +46,7 @@
                 <tr class="row-{{ loan.status.value }}">
                     <td data-label="Objet">
                         <div class="cell-thing">
-                            <span class="thing-icon thing-icon-sm cat-{{ loan.item.category.value }}" aria-hidden="true">{{ loan.item.category.emoji }}</span>
+                            {{ ui.category_tile(loan.item.category, true) }}
                             <div>
                                 <strong>{{ loan.item.name }}</strong>
                                 {% if loan.notes %}<span class="muted small block">{{ loan.notes }}</span>{% endif %}

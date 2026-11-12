@@ -20,7 +20,7 @@ final class ItemType extends AbstractType
             ->add('category', EnumType::class, [
                 'label' => 'Catégorie',
                 'class' => ItemCategory::class,
-                'choice_label' => fn (ItemCategory $c) => $c->emoji() . '  ' . $c->label(),
+                'choice_label' => fn (ItemCategory $c) => $c->label(),
             ])
             ->add('notes', TextareaType::class, [
                 'label' => 'Notes',

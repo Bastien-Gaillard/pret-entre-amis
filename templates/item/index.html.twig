@@ -18,7 +18,7 @@
     {% for category in enum('App\\Enum\\ItemCategory').cases() %}
         {% if counts[category.value] is defined %}
             <a href="{{ path('app_item_index', {categorie: category.value}) }}"{% if current == category %} aria-current="page"{% endif %}>
-                {{ category.emoji }} {{ category.label }} <span class="chip-count">{{ counts[category.value] }}</span>
+                <span class="chip-icon cat-{{ category.value }}">{{ ui.category_svg(category, 15) }}</span>{{ category.label }} <span class="chip-count">{{ counts[category.value] }}</span>
             </a>
         {% endif %}
     {% endfor %}
@@ -37,7 +37,7 @@
             {% set loan = activeLoans[item.id] ?? null %}
             <article class="card item-card{{ loan ? ' is-lent' : '' }}">
                 <div class="card-top">
-                    <span class="thing-icon cat-{{ item.category.value }}" aria-hidden="true">{{ item.category.emoji }}</span>
+                    {{ ui.category_tile(item.category) }}
                     <div class="card-tools">
                         <a href="{{ path('app_item_edit', {id: item.id}) }}" class="btn btn-sm btn-icon btn-ghost" title="Modifier" aria-label="Modifier">{{ ui.icon('edit', 16) }}</a>
                         {{ ui.delete_button('app_item_delete', item.id, 'delete-item-' ~ item.id, 'Supprimer « ' ~ item.name ~ ' » ?') }}

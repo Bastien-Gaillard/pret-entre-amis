@@ -162,10 +162,8 @@ form[data-confirm], .loan-actions form, .cell-actions form, .card-tools form { d
 
 /* --- Mise en page ----------------------------------------------------------- */
 
-.page { max-width: 1140px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+.page { max-width: 1140px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-.footer { text-align: center; color: var(--ink-soft); font-size: .82rem; padding: 0 1rem 2.5rem; }
-.footer a { color: inherit; }
 
 /* --- Accueil ---------------------------------------------------------------- */
 
@@ -226,9 +224,6 @@ form[data-confirm], .loan-actions form, .cell-actions form, .card-tools form { d
 .panel { padding: 1.25rem; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .panel + .panel { margin-top: 1rem; }
 .panel-title { margin-bottom: 1rem; }
-.panel-tip { background: var(--bg-soft); box-shadow: none; font-size: .9rem; color: var(--ink-soft); }
-.panel-tip p { margin: 0; }
-.panel-tip strong { color: var(--ink); }
 
 .leaderboard { list-style: none; margin: 0; padding: 0; display: grid; gap: .85rem; counter-reset: rank; }
 .leaderboard li { display: flex; align-items: center; gap: .7rem; }
@@ -256,20 +251,25 @@ form[data-confirm], .loan-actions form, .cell-actions form, .card-tools form { d
 .avatar-lg { width: 54px; height: 54px; font-size: 1.15rem; }
 
 .thing-icon {
-    display: grid; place-items: center; flex-shrink: 0;
-    width: 46px; height: 46px; border-radius: 13px; font-size: 1.4rem;
-    background: var(--bg-soft);
+    display: grid; place-items: center; flex-shrink: 0; color: #fff;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: var(--cat, var(--line-strong));
+    box-shadow: inset 0 -3px 0 rgb(0 0 0 / .12);
 }
-.thing-icon-sm { width: 34px; height: 34px; border-radius: 10px; font-size: 1.05rem; }
-.cat-bricolage  { background: color-mix(in srgb, #e09b3d 20%, var(--surface)); }
-.cat-jardin     { background: color-mix(in srgb, #5aa469 20%, var(--surface)); }
-.cat-camping    { background: color-mix(in srgb, #3d8b8f 20%, var(--surface)); }
-.cat-sport      { background: color-mix(in srgb, #d65b4a 18%, var(--surface)); }
-.cat-cuisine    { background: color-mix(in srgb, #e3c04a 24%, var(--surface)); }
-.cat-livre      { background: color-mix(in srgb, #8b6fc7 18%, var(--surface)); }
-.cat-jeu        { background: color-mix(in srgb, #4a83d6 18%, var(--surface)); }
-.cat-multimedia { background: color-mix(in srgb, #c45fa0 18%, var(--surface)); }
-.cat-autre      { background: var(--bg-soft); }
+.thing-icon-sm { width: 26px; height: 26px; border-radius: 8px; }
+.chip-icon { display: inline-flex; color: var(--cat); }
+.chips a[aria-current] .chip-icon { color: inherit; }
+
+/* Une couleur par catégorie */
+.cat-bricolage  { --cat: #e0913a; }
+.cat-jardin     { --cat: #5aa469; }
+.cat-camping    { --cat: #2f8f8a; }
+.cat-sport      { --cat: #d65b4a; }
+.cat-cuisine    { --cat: #e3b93d; }
+.cat-livre      { --cat: #8b6fc7; }
+.cat-jeu        { --cat: #4a83d6; }
+.cat-multimedia { --cat: #c45fa0; }
+.cat-autre      { --cat: #9a8f82; }
 
 /* --- Pastilles -------------------------------------------------------------- */
 
